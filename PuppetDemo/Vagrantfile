@@ -1,0 +1,72 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+# Vagrantfile API/syntax version. Don't touch unless you know what you're doing!
+VAGRANTFILE_API_VERSION = "2"
+
+$puppetmaster_ip = "192.168.50.10"
+$num_webservers = 2
+$web_ips = Hash.new
+
+
+
+Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
+  # All Vagrant configuration is done here. The most common configuration
+  # options are documented and commented below. For a complete reference,
+  # please see the online documentation at vagrantup.com.
+
+  # The url from where the 'config.vm.box' box will be fetched if it
+  # doesn't already exist on the user's system.
+  config.vm.box_url = "init"
+
+  # Machines to provision vagrant init puppetlabs/ubuntu-14.04-64-puppet
+
+  # PuppetMaster
+  config.vm.define "puppetmaster" do |puppetmaster|
+    puppetmaster.vm.box="puppetlabs/ubuntu-14.04-64-puppet"
+    puppetmaster.vm.hostname = "puppetmaster"
+    puppetmaster.vm.network "private_network", ip: $puppetmaster_ip
+    puppetmaster.vm.provision "shell", path: "puppetmaster/puppetmaster.sh"
+    puppetmaster.vm.provision "puppet_server" do |puppet|
+      puppet.puppet_server = "puppetmaster.localdomain"
+      puppet.options       = "--verbose"
+    end
+  end
+
+  # Web Machines
+  (1..$num_webservers).each do |i|
+    config.vm.define vm_name = "web%02d" % i do |web|
+      ip = "192.168.50.#{i+100}"
+      web.vm.network :private_network, ip: ip
+      $web_ips[vm_name] = ip
+      web.vm.hostname = vm_name
+      web.vm.box = "puppetlabs/ubuntu-14.04-64-puppet"
+      web.vm.provision "shell", inline: "echo 'puppetmaster.localdomain #{$puppetmaster_ip} ' | sudo tee --append /etc/hosts > /dev/null"
+      web.vm.provision "puppet_server" do |puppet|
+        puppet.puppet_server = "puppetmaster.localdomain"
+        puppet.options = "--verbose"
+      end
+    end
+  end
+
+  # Load Balancer
+  config.vm.define "haproxy" do |haproxy|
+    haproxy.vm.box = "puppetlabs/ubuntu-14.04-64-puppet"
+    haproxy.vm.hostname = "haproxy"
+    host_string = ""
+    (1..$num_webservers).each do |i|
+      vm_name = "web%02d" % i
+      ip = "192.168.50.#{i+100}"
+      haproxy.vm.provision "shell", inline: "echo '#{vm_name} #{ip}' | sudo tee --append /etc/hosts > /dev/null"
+    end
+
+    haproxy.vm.provision "shell", inline: "echo '#{host_string}' | sudo tee --append /etc/hosts > /dev/null "
+    ## Add web01, web02 entries to /etc/hosts
+
+  end
+
+  # Logging / Service Machine?
+
+
+
+end
