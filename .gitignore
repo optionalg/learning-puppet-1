@@ -1,0 +1,3 @@
+PuppetDemo/puppetmaster/puppet/vendor/puppet/cache/*
+PuppetDemo/config.rb
+*.tar.gz

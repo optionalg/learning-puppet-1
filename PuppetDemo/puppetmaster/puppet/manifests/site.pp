@@ -4,12 +4,12 @@ node default{
 }
 
 # The Puppetmaster can manage itself...
-node /^puppetmaster/ {
+node /^puppet/ {
   # Install the MCollective server
 
   class { '::mcollective':
     middleware       => true,
-    middleware_hosts => [ 'puppetmaster.localdomain' ],
+    middleware_hosts => [ 'puppet' ],
     client           => 'true'
   }
 
@@ -21,17 +21,25 @@ node /^puppetmaster/ {
 node /^web/ {
   include nginx
 
-  # Install MCO
+  package{"git": ensure => installed,}
 
+   vcsrepo{"/usr/share/nginx/html/puppet":
+    ensure   => latest,
+    provider => git,
+    source   => 'https://github.com/chad-thompson/learning-puppet-web.git',
+    revision => 'master',
+    require => Package['git'],
+   }
 
-  notify{"Provision a Web Server": }
   class { '::mcollective':
-    middleware_hosts => [ 'puppetmaster.localdomain' ],
+    middleware_hosts => [ 'puppet' ],
   }
 
   mcollective::plugin { ['puppet', 'service']:
     package => true,
   }
+
+  # Install a basic
 
 
 
@@ -40,7 +48,7 @@ node /^web/ {
 node /^haproxy/{
 
 class { '::mcollective':
-middleware_hosts => [ 'puppetmaster.localdomain' ],
+middleware_hosts => [ 'puppet' ],
 }
 
 mcollective::plugin { ['puppet', 'service']:
@@ -49,24 +57,34 @@ mcollective::plugin { ['puppet', 'service']:
 
 
 class { 'haproxy': }
+
+
+
   haproxy::listen { 'haproxy':
     collect_exported => false,
-    ipaddress        => $::ipaddress,
+    ipaddress        => '0.0.0.0',
     ports            => '80',
+    mode             => 'http',
+    options          =>   {
+      'option' => [
+        'tcplog',
+         'httplog'
+      ]
+    }
   }
 
-  haproxy::balancermember { 'master00':
+  haproxy::balancermember { 'web01':
     listening_service => 'haproxy',
     server_names      => 'web01',
-    ipaddresses       => '10.0.0.10',
+    ipaddresses       => '10.89.10.101',
     ports             => '80',
     options           => 'check',
   }
 
-  haproxy::balancermember { 'master01':
+  haproxy::balancermember { 'web02':
     listening_service => 'haproxy',
     server_names      => 'web02',
-    ipaddresses       => '10.0.0.11',
+    ipaddresses       => '10.89.10.102',
     ports             => '80',
     options           => 'check',
   }

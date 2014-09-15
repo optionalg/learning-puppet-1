@@ -4,9 +4,18 @@
 # Vagrantfile API/syntax version. Don't touch unless you know what you're doing!
 VAGRANTFILE_API_VERSION = "2"
 
-$puppetmaster_ip = "192.168.50.10"
+$puppetmaster_vmware_ip = "192.168.50.10"
+$puppetmaster_aws_ip    = "10.89.10.100"
+$haproxy_aws_ip         = "10.89.10.200"
 $num_webservers = 2
 $web_ips = Hash.new
+
+
+CONFIG = File.join(File.dirname(__FILE__), "config.rb")
+if File.exist?(CONFIG)
+  require CONFIG
+  puts $aws_options[:region]
+end
 
 
 
@@ -23,12 +32,41 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
 
   # PuppetMaster
   config.vm.define "puppetmaster" do |puppetmaster|
-    puppetmaster.vm.box="puppetlabs/ubuntu-14.04-64-puppet"
-    puppetmaster.vm.hostname = "puppetmaster"
-    puppetmaster.vm.network "private_network", ip: $puppetmaster_ip
+    puppetmaster.vm.hostname = "puppet"
+    puppetmaster.vm.box = "puppetlabs/ubuntu-14.04-64-puppet"
+
+    # Local Configurations
+    puppetmaster.vm.provider "vmware_fusion" do |fusion|
+      fusion.vm.network "private_network", ip: $puppetmaster_ip
+    end
+
+    puppetmaster.vm.provider "aws" do |aws, override|
+      override.vm.box = "dummy"
+      override.ssh.username = "ubuntu"
+      override.ssh.private_key_path = "#{File.dirname(__FILE__)}/aws/vagrantdev.pem"
+
+      aws.access_key_id     = $aws_options[:access_key]
+      aws.secret_access_key = $aws_options[:secret_key]
+      aws.keypair_name      = $aws_options[:ec2_keypair]
+      aws.region            = $aws_options[:region]
+      aws.ami               = $aws_options[:ami_id]
+      aws.instance_type     = $aws_options[:instance_type]
+      aws.subnet_id         = $aws_options[:subnet_id]
+
+      aws.private_ip_address = $puppetmaster_aws_ip
+      aws.associate_public_ip  = "true"
+      aws.security_groups  = ["sg-e7059182"]
+
+      aws.tags = {
+          'Name' => 'Vagrant Puppetmaster',
+      }
+
+    end
+
+
     puppetmaster.vm.provision "shell", path: "puppetmaster/puppetmaster.sh"
     puppetmaster.vm.provision "puppet_server" do |puppet|
-      puppet.puppet_server = "puppetmaster.localdomain"
+      puppet.puppet_server = "puppet"
       puppet.options       = "--verbose"
     end
   end
@@ -36,14 +74,48 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   # Web Machines
   (1..$num_webservers).each do |i|
     config.vm.define vm_name = "web%02d" % i do |web|
-      ip = "192.168.50.#{i+100}"
-      web.vm.network :private_network, ip: ip
-      $web_ips[vm_name] = ip
-      web.vm.hostname = vm_name
       web.vm.box = "puppetlabs/ubuntu-14.04-64-puppet"
-      web.vm.provision "shell", inline: "echo 'puppetmaster.localdomain #{$puppetmaster_ip} ' | sudo tee --append /etc/hosts > /dev/null"
+      web.vm.hostname = vm_name
+
+      web.vm.provider "vmware_fusion" do |fusion|
+        ip = "192.168.50.#{i+100}"
+        web.vm.network :private_network, ip: ip
+        $web_ips[vm_name] = ip
+      end
+
+      web.vm.provider "aws" do |aws, override|
+        override.vm.box = "dummy"
+        override.ssh.username = "ubuntu"
+        override.ssh.private_key_path = "#{File.dirname(__FILE__)}/aws/vagrantdev.pem"
+
+        aws.access_key_id     = $aws_options[:access_key]
+        aws.secret_access_key = $aws_options[:secret_key]
+        aws.keypair_name      = $aws_options[:ec2_keypair]
+        aws.region            = $aws_options[:region]
+        aws.ami               = $aws_options[:ami_id]
+        aws.instance_type     = $aws_options[:instance_type]
+        aws.subnet_id         = $aws_options[:subnet_id]
+
+
+        ip = "10.89.10.#{i+100}"
+        aws.private_ip_address = ip
+        aws.associate_public_ip  = "true"
+        aws.security_groups  = ["sg-e7059182"]
+
+        aws.tags = {
+            'Name' => "Vagrant Web Server #{vm_name}",
+        }
+
+      end
+      web.vm.provision "shell" do |sh|
+        sh.inline = "echo '127.0.0.1 #{vm_name}' >> /etc/hosts
+                     echo '#{vm_name}' > /etc/hostname
+                     hostname `cat /etc/hostname`"
+      end
+      web.vm.provision "shell", path: "webserver/bootstrap.sh"
+      web.vm.provision "shell", inline: "echo '#{$puppetmaster_aws_ip} puppet' | sudo tee --append /etc/hosts > /dev/null"
       web.vm.provision "puppet_server" do |puppet|
-        puppet.puppet_server = "puppetmaster.localdomain"
+        puppet.puppet_server = "puppet"
         puppet.options = "--verbose"
       end
     end
@@ -53,16 +125,53 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.define "haproxy" do |haproxy|
     haproxy.vm.box = "puppetlabs/ubuntu-14.04-64-puppet"
     haproxy.vm.hostname = "haproxy"
-    host_string = ""
-    (1..$num_webservers).each do |i|
-      vm_name = "web%02d" % i
-      ip = "192.168.50.#{i+100}"
-      haproxy.vm.provision "shell", inline: "echo '#{vm_name} #{ip}' | sudo tee --append /etc/hosts > /dev/null"
+
+
+
+    ## Add web01, web02 entries to /etc/hosts
+    haproxy.vm.provider "aws" do |aws, override|
+      override.vm.box = "dummy"
+      override.ssh.username = "ubuntu"
+      override.ssh.private_key_path = "#{File.dirname(__FILE__)}/aws/vagrantdev.pem"
+
+      aws.access_key_id     = $aws_options[:access_key]
+      aws.secret_access_key = $aws_options[:secret_key]
+      aws.keypair_name      = $aws_options[:ec2_keypair]
+      aws.region            = $aws_options[:region]
+      aws.ami               = $aws_options[:ami_id]
+      aws.instance_type     = $aws_options[:instance_type]
+      aws.subnet_id         = $aws_options[:subnet_id]
+
+      aws.private_ip_address = $haproxy_aws_ip
+      aws.associate_public_ip  = "true"
+      aws.security_groups  = ["sg-e7059182"]
+
+      aws.tags = {
+          'Name' => 'Vagrant HAPRoxy',
+      }
+
+      host_string = ""
+      (1..$num_webservers).each do |i|
+        vm_name = "web%02d" % i
+        ip = "10.89.10.#{i+100}"
+        override.vm.provision "shell", inline: "echo '#{ip} #{vm_name}' | sudo tee --append /etc/hosts > /dev/null"
+      end
+
+      override.vm.provision "shell", inline: "echo '#{host_string}' | sudo tee --append /etc/hosts > /dev/null "
+
     end
 
-    haproxy.vm.provision "shell", inline: "echo '#{host_string}' | sudo tee --append /etc/hosts > /dev/null "
-    ## Add web01, web02 entries to /etc/hosts
-
+    haproxy.vm.provision "shell" do |sh|
+      sh.inline = "echo '127.0.0.1 haproxy' >> /etc/hosts
+                   echo 'haproxy' > /etc/hostname
+                   hostname `cat /etc/hostname`"
+    end
+    haproxy.vm.provision "shell", path: "webserver/bootstrap.sh"
+    haproxy.vm.provision "shell", inline: "echo '#{$puppetmaster_aws_ip} puppet' | sudo tee --append /etc/hosts > /dev/null"
+    haproxy.vm.provision "puppet_server" do |puppet|
+      puppet.puppet_server = "puppet"
+      puppet.options = "--verbose"
+    end
   end
 
   # Logging / Service Machine?

@@ -13,6 +13,7 @@ mod 'puppetlabs/activemq'
 mod 'garethr/erlang'
 mod 'puppetlabs/stdlib'
 mod 'puppetlabs/java_ks'
+mod 'puppetlabs/vcsrepo'
 
 # NGINX
 mod 'jfryman/nginx'

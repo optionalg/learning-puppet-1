@@ -1,0 +1,6 @@
+#!/bin/sh
+
+hostname puppet
+
+echo "puppet" > /etc/hostname
+echo "127.0.0.1 puppet" >> /etc/hosts
