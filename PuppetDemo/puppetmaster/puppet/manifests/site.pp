@@ -40,9 +40,6 @@ node /^web/ {
   }
 
   # Install a basic
-
-
-
 }
 
 node /^haproxy/{

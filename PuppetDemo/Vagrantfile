@@ -34,11 +34,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.define "puppetmaster" do |puppetmaster|
     puppetmaster.vm.hostname = "puppet"
     puppetmaster.vm.box = "puppetlabs/ubuntu-14.04-64-puppet"
-
-    # Local Configurations
-    puppetmaster.vm.provider "vmware_fusion" do |fusion|
-      fusion.vm.network "private_network", ip: $puppetmaster_ip
-    end
+    puppetmaster.vm.network "private_network", ip: $puppetmaster_vmware_ip
 
     puppetmaster.vm.provider "aws" do |aws, override|
       override.vm.box = "dummy"
@@ -79,8 +75,9 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
 
       web.vm.provider "vmware_fusion" do |fusion|
         ip = "192.168.50.#{i+100}"
-        web.vm.network :private_network, ip: ip
+        fusion.vm.network :private_network, ip: ip
         $web_ips[vm_name] = ip
+
       end
 
       web.vm.provider "aws" do |aws, override|
@@ -107,13 +104,21 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
         }
 
       end
+
+
+      web.vm.provision "shell", inline: "echo '#{$puppetmaster_vmware_ip} puppet' | sudo tee --append /etc/hosts > /dev/null", id:"puppet"
+
+      web.vm.provider "aws" do |aws, override|
+        override.vm.provision "shell", inline: "echo '#{$puppetmaster_aws_ip} puppet' | sudo tee --append /etc/hosts > /dev/null", id:"puppet" , preserve_order: true
+      end
+
       web.vm.provision "shell" do |sh|
         sh.inline = "echo '127.0.0.1 #{vm_name}' >> /etc/hosts
                      echo '#{vm_name}' > /etc/hostname
                      hostname `cat /etc/hostname`"
       end
+
       web.vm.provision "shell", path: "webserver/bootstrap.sh"
-      web.vm.provision "shell", inline: "echo '#{$puppetmaster_aws_ip} puppet' | sudo tee --append /etc/hosts > /dev/null"
       web.vm.provision "puppet_server" do |puppet|
         puppet.puppet_server = "puppet"
         puppet.options = "--verbose"
