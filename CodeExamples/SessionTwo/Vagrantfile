@@ -1,0 +1,41 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+# Vagrantfile API/syntax version. Don't touch unless you know what you're doing!
+VAGRANTFILE_API_VERSION = "2"
+
+Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
+  # All Vagrant configuration is done here. The most common configuration
+  # options are documented and commented below. For a complete reference,
+  # please see the online documentation at vagrantup.com.
+
+  # Every Vagrant virtual environment requires a box to build off of.
+  config.vm.box = "puppetlabs/ubuntu-14.04-64-puppet"
+
+  config.vm.define "ubuntu" do |ubuntu|
+    ubuntu.vm.box = "puppetlabs/ubuntu-14.04-64-puppet"
+    ubuntu.vm.hostname = "ubuntu"
+    ubuntu.vm.provision "shell", inline: "apt-get update"
+  end
+
+  config.vm.define "centos" do |centos|
+    centos.vm.box = "puppetlabs/centos-6.5-64-puppet"
+    centos.vm.hostname = "centos"
+  end
+
+
+
+  config.vm.define "web" do |web|
+    web.vm.box = "puppetlabs/ubuntu-14.04-64-puppet"
+    web.vm.hostname = "web"
+    web.vm.provision "puppet" do |puppet|
+      puppet.manifests_path = "puppet/manifests"
+      puppet.module_path   = "puppet/modules"
+      puppet.manifest_file = "site.pp"
+    end
+
+  end
+
+
+
+end

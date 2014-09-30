@@ -1,0 +1,19 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+# Vagrantfile API/syntax version. Don't touch unless you know what you're doing!
+VAGRANTFILE_API_VERSION = "2"
+
+Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
+
+	config.vm.define "centos" do |centos|
+	   centos.vm.box      = "puppetlabs/ubuntu-14.04-64-puppet"
+	   centos.vm.hostname = "centos"
+	end
+	
+	config.vm.define "ubuntu" do |ubuntu|
+		ubuntu.vm.box      = "puppetlabs/ubuntu-14.04-64-puppet"
+		ubuntu.vm.hostname = "ubuntu"
+	end
+
+end
